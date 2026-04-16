@@ -124,15 +124,11 @@ class SimpleRAG:
 
     def _query_ollama(self, question: str, context: str) -> str:
         """Query Ollama for a natural language answer based on context."""
-        prompt = f"""Based on the following provided file structure, answer the question.
+        # Load the prompt from text file
+        with open('coding_prompt.txt','r') as file:
+            prompt_template = file.read()
 
-Context:
-{context}
-
-Question: {question}
-
-Answer:"""
-
+        prompt = prompt_template.format(context=context, question=question)
         try:
             response = requests.post(
                 f"{self.ollama_url}/api/generate",
@@ -141,7 +137,7 @@ Answer:"""
                     "prompt": prompt,
                     "stream": False,
                 },
-                timeout=180
+                timeout=300
             )
 
             if response.status_code == 200:
@@ -161,34 +157,12 @@ Answer:"""
         Returns:
             Tuple of (explanation, code_string)
         """
-        prompt = f"""You are a Python code generation expert. Based on the context provided, generate Python code to accomplish the requested task.
 
-The telemetry data has the following structure:
-{context}
-
-Task: {question}
-
-Please provide:
-1. A brief explanation of what the code does
-2. Complete, working Python code that accomplishes the task
-
-Format your response as:
-EXPLANATION:
-[Your explanation here]
-
-CODE:
-```python
-[Your Python code here]
-```
-
-Make sure the code:
-- Is complete and runnable
-- Includes proper error handling
-- Has helpful comments
-- Uses standard library when possible
-- Works with CSV files from the provided data structure
-- Use the exact filenames as shown in summary.csv when the files are called in the code
-- Uses the exact column names from the CSV files"""
+        # Load the prompt from text file
+        with open('coding_prompt.txt','r') as file:
+            prompt_template = file.read()
+        # Format prompt with context and question
+        prompt = prompt_template.format(context=context, question=question)
 
         try:
             response = requests.post(
@@ -198,7 +172,7 @@ Make sure the code:
                     "prompt": prompt,
                     "stream": False,
                 },
-                timeout=180
+                timeout=300
             )
 
             if response.status_code == 200:
@@ -260,3 +234,34 @@ Make sure the code:
                 "sources": result["source_documents"]
             })
         return results
+
+    def list_ingested_documents(self) -> List[str]:
+        """
+        List all documents currently ingested in the vector store.
+
+        Returns:
+            A list of document contents.
+        """
+        try:
+            # Retrieve all documents from the collection
+            results = self.collection.get()
+            return results.get('documents', [])
+        except Exception as e:
+            print(f"Error retrieving documents: {e}")
+            return []
+
+    def clear_ingested_documents(self) -> None:
+        """
+        Clear all documents currently ingested in the vector store.
+        """
+        try:
+            # Retrieve all document IDs
+            all_ids = self.collection.get().get('ids', [])
+            if all_ids:
+                # Delete documents by their IDs
+                self.collection.delete(ids=all_ids)
+                print("✓ All ingested documents have been cleared.")
+            else:
+                print("No documents to clear.")
+        except Exception as e:
+            print(f"Error clearing documents: {e}")

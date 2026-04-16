@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 
-def compile_csv_summary(data_dir='data', output_file='summary.csv'):
+def compile_csv_summary(data_dir='data', output_file='data/summary.csv'):
     """
     Read all CSV files from a directory and compile a summary CSV file.
     
@@ -63,6 +63,12 @@ def compile_csv_summary(data_dir='data', output_file='summary.csv'):
     if summary_data:
         try:
             with open(output_file, 'w', newline='', encoding='utf-8') as f:
+                # Write the comment at the top of the file
+                f.write("# This file provides an example structure of the telemetry data.\n")
+                f.write("# It contains only the filepath, the file's header, and one example row from each file; it is not the full dataset.\n")
+                f.write("# To access the full data, call the files directly in your code using the provided filenames.\n")
+
+                # Write csv data
                 writer = csv.DictWriter(f, fieldnames=['filename', 'header', 'example_row'])
                 writer.writeheader()
                 writer.writerows(summary_data)

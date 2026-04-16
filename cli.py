@@ -113,6 +113,8 @@ def query_command(question: str, model: str):
             content = doc.get('content', doc)
             print(f"\n[{i}] Content preview: {str(content)[:200]}...")
 
+    return result['result']
+
 
 def codegen_command(task: str, model: str, save_file: str = None):
     """Handle code generation."""
