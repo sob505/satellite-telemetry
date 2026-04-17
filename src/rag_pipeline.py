@@ -15,7 +15,7 @@ import requests
 load_dotenv()
 
 class SimpleRAG:
-    def __init__(self, model_name: str = "llama2"):
+    def __init__(self, model_name: str = "phi"):
         """
         Initialize the RAG pipeline.
 

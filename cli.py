@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from src.rag_pipeline import SimpleRAG
 # from src.telemetry_loader import TelemetryProcessor
-
+MODEL = "phi"
 
 def main():
     parser = argparse.ArgumentParser(
@@ -35,26 +35,26 @@ Examples:
     # Ingest command
     ingest_parser = subparsers.add_parser('ingest', help='Ingest telemetry data')
     ingest_parser.add_argument('filepath', type=str, help='Path to telemetry file')
-    ingest_parser.add_argument('--model', type=str, default='llama2',
-                               help='LLM model to use (default: llama2)')
+    ingest_parser.add_argument('--model', type=str, default=MODEL,
+                               help=f'LLM model to use (default: {MODEL})')
 
     # Query command
     query_parser = subparsers.add_parser('query', help='Query the RAG system')
     query_parser.add_argument('question', type=str, help='Question to ask')
-    query_parser.add_argument('--model', type=str, default='llama2',
-                              help='LLM model to use (default: llama2)')
+    query_parser.add_argument('--model', type=str, default=MODEL,
+                              help=f'LLM model to use (default: {MODEL})')
 
     # Code generation command
     codegen_parser = subparsers.add_parser('codegen', help='Generate code')
     codegen_parser.add_argument('task', type=str, help='Task description for code generation')
-    codegen_parser.add_argument('--model', type=str, default='llama2',
-                                help='LLM model to use (default: llama2)')
+    codegen_parser.add_argument('--model', type=str, default=MODEL,
+                                help=f'LLM model to use (default: {MODEL})')
     codegen_parser.add_argument('--save', type=str, help='Save generated code to file')
 
     # Interactive command
     interactive_parser = subparsers.add_parser('interactive', help='Interactive mode')
-    interactive_parser.add_argument('--model', type=str, default='llama2',
-                                    help='LLM model to use (default: llama2)')
+    interactive_parser.add_argument('--model', type=str, default=MODEL,
+                                    help=f'LLM model to use (default: {MODEL})')
 
     args = parser.parse_args()
 

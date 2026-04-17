@@ -5,6 +5,8 @@ import cli
 import threading
 import sys
 
+MODEL = "phi"  # Default model to use for all operations
+
 class RedirectOutput:
     def __init__(self, text_widget):
         self.text_widget = text_widget
@@ -37,7 +39,7 @@ def create_gui():
 
     def process_query(user_query):
         try:
-            output = cli.codegen_command(user_query, "llama2")
+            output = cli.codegen_command(user_query, MODEL)
             update_output(output)
         except Exception as e:
             update_output(f"Error: {e}")
@@ -49,7 +51,7 @@ def create_gui():
     def ingest_data():
         try:
             filename = rag_input.get()
-            output = cli.ingest_command(filename, "llama2")
+            output = cli.ingest_command(filename, MODEL)
             update_output(output)
         except Exception as e:
             output_text.insert(tk.END, f"Error: {e}")
