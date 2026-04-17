@@ -36,8 +36,11 @@ class SimpleRAG:
         self.client = chromadb.PersistentClient(path=self.persist_directory)
         self.collection = self.client.get_or_create_collection(name="telemetry")
 
+        self.output = f"Initialized RAG pipeline with model: {model_name}\n"
+
     def ingest_telemetry_data(self, file_path: str):
         """Ingest satellite telemetry data from a file."""
+        self.output += f"Ingesting telemetry data from: {file_path}\n"
         with open(file_path, 'r') as f:
             content = f.read()
 
@@ -61,9 +64,9 @@ class SimpleRAG:
                     embeddings=[embedding.tolist()]
                 )
             except Exception as e:
-                print(f"Error processing chunk {i}: {e}")
+                self.output += f"Error processing chunk {i}: {e}\n"
 
-        print(f"✓ Ingested {len(chunks)} chunks from {file_path}")
+        self.output += f"✓ Ingested {len(chunks)} chunks from {file_path}\n"
 
     def query(self, question: str, top_k: int = 4, code_generation: bool = False) -> Dict:
         """
@@ -77,6 +80,7 @@ class SimpleRAG:
         Returns:
             Dictionary with 'result' and 'source_documents'
         """
+        self.output += f"Generating code for task: {question}\n"
         # Embed the question
         question_embedding = self.embeddings.encode(question)
 
@@ -247,7 +251,7 @@ class SimpleRAG:
             results = self.collection.get()
             return results.get('documents', [])
         except Exception as e:
-            print(f"Error retrieving documents: {e}")
+            self.output += f"Error retrieving documents: {e}\n"
             return []
 
     def clear_ingested_documents(self) -> None:
@@ -260,8 +264,8 @@ class SimpleRAG:
             if all_ids:
                 # Delete documents by their IDs
                 self.collection.delete(ids=all_ids)
-                print("✓ All ingested documents have been cleared.")
+                self.output += "✓ All ingested documents have been cleared.\n"
             else:
-                print("No documents to clear.")
+                self.output += "No documents to clear.\n"
         except Exception as e:
-            print(f"Error clearing documents: {e}")
+            self.output += f"Error clearing documents: {e}\n"

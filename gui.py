@@ -38,20 +38,21 @@ def create_gui():
     def process_query(user_query):
         try:
             output = cli.codegen_command(user_query, "llama2")
-            root.after(0, lambda: update_output(output))
+            update_output(output)
         except Exception as e:
-            root.after(0, lambda: update_output(f"Error: {e}"))
+            update_output(f"Error: {e}")
 
     def update_output(output):
-        dialogue_output.config(text=output)
+        output_text.insert(tk.END, output + "\n")
+        output_text.see(tk.END)
 
     def ingest_data():
         try:
             filename = rag_input.get()
-            cli.ingest_command(filename, "llama2")
-            output_frame.config(text="Data ingestion complete.")
+            output = cli.ingest_command(filename, "llama2")
+            update_output(output)
         except Exception as e:
-            dialogue_output.config(text=f"Error: {e}")
+            output_text.insert(tk.END, f"Error: {e}")
 
     def clear_entry(event):
         if user_input.get() == "Enter command here":
@@ -80,8 +81,6 @@ def create_gui():
     # Add a Text widget inside the LabelFrame for redirected output
     output_text = tk.Text(output_frame, wrap=tk.WORD, state=tk.NORMAL, height=10, width=50)
     output_text.pack(fill="both", expand=True)
-    # Redirect stdout to the Text widget
-    sys.stdout = RedirectOutput(output_text)
 
     rag_input = tk.Entry(output_frame)
     rag_input.pack(fill="x", pady=(10, 0))

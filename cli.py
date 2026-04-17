@@ -83,13 +83,12 @@ def ingest_command(filepath: str, model: str):
     if not filepath.exists():
         raise FileNotFoundError(f"File not found: {filepath}")
 
-    print(f"Initializing RAG pipeline with model: {model}")
     rag = SimpleRAG(model_name=model)
-
-    print(f"Ingesting telemetry data from: {filepath}")
     rag.ingest_telemetry_data(str(filepath))
+    output = rag.output
 
-    print("✓ Data ingestion complete")
+    output += "✓ Data ingestion complete\n"
+    return output
 
 
 def query_command(question: str, model: str):
@@ -118,22 +117,14 @@ def query_command(question: str, model: str):
 
 def codegen_command(task: str, model: str, save_file: str = None):
     """Handle code generation."""
-    print(f"Initializing RAG pipeline with model: {model}")
     rag = SimpleRAG(model_name=model)
 
-    print(f"Generating code for task: {task}\n")
     result = rag.query(task, code_generation=True)
 
-    print("=" * 80)
-    print("EXPLANATION:")
-    print("=" * 80)
-    print(result['result'])
+    output = "=" * 80 + "\n" + "EXPLANATION:" + "\n" + "=" * 80 + "\n" + result['result'] + "\n"
 
     if result.get('code'):
-        print("\n" + "=" * 80)
-        print("GENERATED CODE:")
-        print("=" * 80)
-        print(result['code'])
+        output += "\n" + "=" * 80 + "GENERATED CODE:" + "\n" + "=" * 80 + "\n" + result['code'] + "\n"
 
         # Default to saving the code if no file is specified
         if not save_file:
@@ -141,17 +132,17 @@ def codegen_command(task: str, model: str, save_file: str = None):
 
         with open(save_file, 'w') as f:
             f.write(result['code'])
-        print(f"\n✓ Code saved to: {save_file}")
+        output += f"\n✓ Code saved to: {save_file}"
     else:
-        print("\nNo code was generated. The LLM may not have recognized the code format.")
+        output += "\nNo code was generated. The LLM may not have recognized the code format."
 
     if result.get('source_documents'):
-        print("\n" + "=" * 80)
-        print("SOURCE DOCUMENTS:")
-        print("=" * 80)
+        output += "\n" + "=" * 80 + "\n" + "SOURCE DOCUMENTS:" + "\n" + "=" * 80 + "\n"
         for i, doc in enumerate(result['source_documents'], 1):
             content = doc.get('content', doc)
-            print(f"\n[{i}] Content preview: {str(content)[:20]}...")
+            output += f"\n[{i}] Content preview: {str(content)[:20]}..."
+
+    return output
 
 def interactive_command(model: str):
     """Handle interactive mode."""
