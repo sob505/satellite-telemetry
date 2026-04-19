@@ -4,9 +4,9 @@ import compile_csv_summary
 import cli
 import threading
 import sys
+import subprocess
 
 MODEL = "phi"  # Default model to use for all operations
-
 class RedirectOutput:
     def __init__(self, text_widget):
         self.text_widget = text_widget
@@ -21,8 +21,15 @@ class RedirectOutput:
     def flush(self):
         pass  # Required for compatibility with sys.stdout
 
+def ensure_model(model="phi"):
+    try:
+        subprocess.run(["ollama", "show", model], check=True, stdout=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        subprocess.run(["ollama", "pull", model], check=True)
 
 def create_gui():
+    ensure_model(model=MODEL)
+
     # Create the main window
     root = tk.Tk()
     root.title("Telemetry LLM Interface")
