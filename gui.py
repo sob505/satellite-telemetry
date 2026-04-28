@@ -48,6 +48,17 @@ def create_gui():
         dialogue_text.insert(tk.END, "Processing...\n")  # Show a loading message
         thread = threading.Thread(target=process_query, args=(user_query, action), daemon=True)
         thread.start()
+        global prev_query, prev_action
+        prev_query = user_query
+        prev_action = action
+
+    def feedback_input():
+        ensure_model_async()
+        user_query = r'You did not do it right. Please retry query: ' + prev_query
+        action = prev_action
+        dialogue_text.insert(tk.END, "Processing...\n")  # Show a loading message
+        thread = threading.Thread(target=process_query, args=(user_query,action), daemon=True)
+        thread.start()
 
     def process_query(user_query, action):
         try:
@@ -155,6 +166,8 @@ def create_gui():
     code_button.pack(side=tk.LEFT, padx=(0, 5))
     query_button = tk.Button(button_frame, text="Ask Question", command=lambda: handle_input("Query"))
     query_button.pack(side=tk.LEFT, padx=(5, 0))
+    retry_button = tk.Button(button_frame, text="Retry", command=lambda: feedback_input())
+    retry_button.pack(side=tk.LEFT, padx=(5, 0))
 
     # Column 3: Outputs
     container_frame = ttk.LabelFrame(root, text="Outputs", padding=10)
