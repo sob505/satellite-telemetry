@@ -59,9 +59,6 @@ def create_gui():
         dialogue_text.insert(tk.END, "Processing...\n")  # Show a loading message
         thread = threading.Thread(target=process_query, args=(user_query,action), daemon=True)
         thread.start()
-        global prev_query, prev_action
-        prev_query = user_query
-        prev_action = action
 
     def feedback_input():
         ensure_model_async()
@@ -176,7 +173,7 @@ def create_gui():
     code_button = tk.Button(button_frame, text="Generate Code", command=lambda: handle_input("Code"))
     code_button.pack(side=tk.LEFT, padx=(0, 5))
     query_button = tk.Button(button_frame, text="Ask Question", command=lambda: handle_input("Query"))
-    query_button.pack(side=tk.LEFT, padx=(5, 0))
+    query_button.pack(side=tk.LEFT, padx=(5, 5))
     retry_button = tk.Button(button_frame, text="Retry", command=lambda: feedback_input())
     retry_button.pack(side=tk.LEFT, padx=(5, 0))
 
