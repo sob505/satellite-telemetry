@@ -7,6 +7,7 @@ import argparse
 import sys
 from pathlib import Path
 from src.rag_pipeline import SimpleRAG
+import subprocess
 
 # from src.telemetry_loader import TelemetryProcessor
 MODEL = "phi"
@@ -27,8 +28,6 @@ Examples:
   # Generate code
   python cli.py codegen "Generate Python code that determines maximum altitude"
   
-  # Interactive mode
-  python cli.py interactive
         """
     )
 
@@ -53,10 +52,11 @@ Examples:
                                 help=f'LLM model to use (default: {MODEL})')
     codegen_parser.add_argument('--save', type=str, help='Save generated code to file')
 
-    # Interactive command
-    interactive_parser = subparsers.add_parser('interactive', help='Interactive mode')
-    interactive_parser.add_argument('--model', type=str, default=MODEL,
-                                    help=f'LLM model to use (default: {MODEL})')
+    # Check command
+    check_parser = subparsers.add_parser('check', help='Check Python syntax')
+    check_parser.add_argument('filepath', type=str, help='Path to Python file')
+    check_parser.add_argument('--model', type=str, default=MODEL,
+                              help=f'LLM model to use (default: {MODEL})')
 
     args = parser.parse_args()
 
@@ -71,8 +71,8 @@ Examples:
             query_command(args.question, args.model)
         elif args.command == 'codegen':
             codegen_command(args.task, args.model, args.save)
-        elif args.command == 'interactive':
-            interactive_command(args.model)
+        elif args.command == 'check':
+            check_command(args.filepath, args.model)
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -155,63 +155,32 @@ def codegen_command(task: str, model: str, save_file: str = None):
     return explanation, code, sources
 
 
-def interactive_command(model: str):
-    """Handle interactive mode."""
-    print(f"Initializing RAG pipeline with model: {model}")
-    print("Commands:")
-    print("  query <question>     - Ask a question")
-    print("  codegen <task>       - Generate code")
-    print("  ingest <filepath>    - Ingest data")
-    print("  exit                 - Quit\n")
+def check_command(file_path: str, model: str):
+    """Check Python syntax using ollama."""
+    try:
+        with open(file_path, 'r') as file:
+            code = file.read()
 
-    rag = SimpleRAG(model_name=model)
+        # Call ollama with the code as input
+        result = subprocess.run(
+            ["ollama", "run", model],
+            input=code,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
 
-    while True:
-        try:
-            user_input = input(">> ").strip()
+        if result.returncode == 0:
+            print("Syntax check passed!")
+            print(result.stdout)
+        else:
+            print("Syntax check failed!")
+            print(result.stderr)
 
-            if not user_input:
-                continue
-
-            if user_input.lower() == 'exit':
-                print("Goodbye!")
-                break
-
-            if user_input.startswith('ingest '):
-                filepath = user_input[7:].strip()
-                print(f"Ingesting: {filepath}")
-                rag.ingest_telemetry_data(filepath)
-                print("✓ Ingestion complete\n")
-                continue
-
-            if user_input.startswith('codegen '):
-                task = user_input[8:].strip()
-                print(f"\nGenerating code...\n")
-                result = rag.query(task, code_generation=True)
-                print(f"Explanation: {result['result']}\n")
-                if result.get('code'):
-                    print("Code:\n")
-                    print(result['code'])
-                print()
-                continue
-
-            if user_input.startswith('query '):
-                question = user_input[6:].strip()
-                print(f"\nProcessing query...\n")
-                result = rag.query(question)
-                print(f"Answer: {result['result']}\n")
-                continue
-
-            # Default to query if no command specified
-            print(f"\nProcessing query...\n")
-            result = rag.query(user_input)
-            print(f"Answer: {result['result']}\n")
-
-        except KeyboardInterrupt:
-            print("\nGoodbye!")
-            break
-        except Exception as e:
-            print(f"Error: {e}\n")
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 if __name__ == '__main__':

@@ -1,32 +1,17 @@
-You are a Python code generation expert. Based on the schema provided, generate Python code to accomplish the requested task.
+You are a Python code generation expert. Based on the provided schema, generate Python code to accomplish the task.
 
 The telemetry data has the following structure:
 {context}
 
 Task: {question}
 
-Please provide:
-1. A brief explanation of what the code does
-2. Complete, working Python code that accomplishes the task
+Provide:
+1. A brief explanation of the code
+2. Complete, runnable Python code
 
-Format your response as:
-EXPLANATION:
-[Your explanation here]
-
-CODE:
-```python
-[Your Python code here]
-```
-
-Double check to ensure that the code uses the filenames as listed in summary.csv.
-It should also use the exact column names from the CSV files when accessing data.
-All of this data is stored as strings and should be accessed with correct string notation.
-
-Make sure the code:
-- Is complete and runnable
-- Includes proper error handling
-- Has helpful comments
-- Uses standard library when possible
-- Works with CSV files from the provided data structure
-- Use the exact filenames as shown in summary.csv when the files are called in the code
-- Uses the exact column names from the CSV files"""
+Ensure the code:
+- Uses filenames and column names exactly as listed in `schema.JSON`
+- Handles errors properly
+- Includes helpful comments
+- Uses the standard library and scikit-learn only
+- Works with the provided CSV data structure

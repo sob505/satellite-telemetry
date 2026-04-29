@@ -1,36 +1,20 @@
 import tkinter as tk
 from tkinter import ttk
-import compile_csv_summary
 import cli
 import threading
-import sys
 import subprocess
-# import required module
 from playsound import playsound
-import cProfile
+from verify import repair_generated_code
+import os
 
 MODEL = "phi"  # Default model for all operations
-
-
-class RedirectOutput:
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-
-    def write(self, message):
-        self.text_widget.after(0, lambda: self._append(message))
-
-    def _append(self, message):
-        self.text_widget.insert(tk.END, message)
-        self.text_widget.see(tk.END)
-
-    def flush(self):
-        pass  # Required for compatibility with sys.stdout
 
 
 def ensure_model_async():
     def task():
         try:
-            result = subprocess.run(["ollama", "show", MODEL], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = subprocess.run(["ollama", "show", MODEL],
+                                    check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode != 0:
                 subprocess.Popen(["ollama", "pull", MODEL])
         except subprocess.CalledProcessError:
@@ -38,8 +22,10 @@ def ensure_model_async():
 
     threading.Thread(target=task, daemon=True).start()
 
+
 def play_sound_async(sound_file):
     threading.Thread(target=playsound, args=(sound_file,), daemon=True).start()
+
 
 def create_gui():
     # Create the main window
@@ -47,6 +33,10 @@ def create_gui():
     root.title("Telemetry LLM Interface")
     root.geometry("800x400")  # Set the window size
     root.state('zoomed')  # Maximize the window (with top bar)
+
+    # Change style
+    style = ttk.Style()
+    style.theme_use("classic")  # Use a predefined theme
 
     # Start loading model in background
     ensure_model_async()
@@ -56,16 +46,39 @@ def create_gui():
         ensure_model_async()
         user_query = dialogue_input.get()
         dialogue_text.insert(tk.END, "Processing...\n")  # Show a loading message
-        thread = threading.Thread(target=process_query, args=(user_query,action), daemon=True)
+        thread = threading.Thread(target=process_query, args=(user_query, action), daemon=True)
         thread.start()
 
     def process_query(user_query, action):
         try:
             if action == "Code":
                 explanation, code, sources = cli.codegen_command(user_query, MODEL)
-                update_output(explanation, dialogue_text)  # Insert explanation into dialogue_text
-                update_output(code, code_output_text)  # Insert code into code_output_text
+                update_output("Code generated. Running syntax check...\n", dialogue_text)
+                # Save the generated code to a temporary file for syntax checking
+                temp_file = "output.py"
+                with open(temp_file, "w") as f:
+                    f.write(code)
 
+                # Perform syntax check
+                try:
+                    compile(code, "<string>", "exec")
+                    # Syntax check passed, update the GUI
+                    update_output(explanation, dialogue_text)
+                    update_output(code, code_output_text)
+                    update_output("Syntax check passed!\n", dialogue_text)
+
+                    fixed, msg = repair_generated_code(
+                        file_path=temp_file,
+                        repo_path=os.getcwd(),
+                        replace_with="placeholder.csv"
+                    )
+                    if fixed:
+                        update_output(msg + "\n", code_output_text)
+                    else:
+                        update_output("No file name issues found in code.\n", code_output_text)
+                except SyntaxError as e:
+                    # Syntax check failed, show error in the GUI
+                    update_output("Syntax check failed:\n" + e, dialogue_text)
             elif action == "Query":
                 output = cli.query_command(user_query, MODEL)
                 update_output(output, dialogue_text)
@@ -76,7 +89,6 @@ def create_gui():
     def update_output(output, target_widget):
         target_widget.insert(tk.END, output + "\n")
         target_widget.see(tk.END)
-        #playsound('chime.mp3')
 
     def ingest_data():
         def run_ingest_data():
@@ -110,14 +122,14 @@ def create_gui():
 
     # Add a Label above the rag_input
     rag_label = tk.Label(rag_frame, text="Enter folder path to ingest (e.g. data):")
-    rag_label.pack(fill="x", pady=(0, 5))
+    rag_label.pack(fill="x", pady=(5, 0))
     # Input box for user to enter folder path for ingestion
     rag_input = tk.Entry(rag_frame)
-    rag_input.pack(fill="x", pady=(10, 0))
-    rag_input.insert(0, "Enter command here")
+    rag_input.pack(fill="x", pady=(0, 5))
+    rag_input.insert(0, "Enter folder name here")
     rag_input.bind("<FocusIn>", clear_entry)
     # Add a button to submit folder path
-    submit_ingest = tk.Button(rag_frame, text="Submit", command=ingest_data)
+    submit_ingest = ttk.Button(rag_frame, text="Submit", command=ingest_data)
     submit_ingest.pack(pady=(10, 0))
 
     # Column 2: Dialogue Box
@@ -128,22 +140,23 @@ def create_gui():
     dialogue_text.pack(fill="both", expand=True)
 
     # Add a Label above the rag_input
-    dialogue_label = tk.Label(dialogue_frame, text="Enter command to generate code:")
-    dialogue_label.pack(fill="x", pady=(0, 5))
+    dialogue_label = tk.Label(dialogue_frame, text="Enter query to LLM:")
+    dialogue_label.pack(fill="x", pady=(5, 0))
     # Input box for user to enter command for code generation
     dialogue_input = tk.Entry(dialogue_frame)
-    dialogue_input.pack(fill="x", pady=(10, 0))
+    dialogue_input.pack(fill="x", pady=(0, 5))
+    dialogue_input.insert(0, "Enter query here")
     dialogue_input.bind("<FocusIn>", clear_entry)
 
     # Update button commands
     button_frame = tk.Frame(dialogue_frame)
-    button_frame.pack(pady=(10, 0))
+    button_frame.pack(pady=(10, 10))
     code_button = tk.Button(button_frame, text="Generate Code", command=lambda: handle_input("Code"))
     code_button.pack(side=tk.LEFT, padx=(0, 5))
     query_button = tk.Button(button_frame, text="Ask Question", command=lambda: handle_input("Query"))
     query_button.pack(side=tk.LEFT, padx=(5, 0))
 
-    # Column 3: Analysis of Outputs
+    # Column 3: Outputs
     container_frame = ttk.LabelFrame(root, text="Outputs", padding=10)
     container_frame.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
     # Add a Text widget for code output in the container_frame
@@ -162,4 +175,4 @@ def create_gui():
 
 
 if __name__ == "__main__":
-    cProfile.run(create_gui())
+    create_gui()
