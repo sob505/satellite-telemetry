@@ -1,20 +1,13 @@
 Available data files:
 
-data/sample_telemetry.csv:
-- timestamp
-- satellite_id
-- altitude_km
-- temperature_c
-- signal_strength_dbm
-- solar_panel_voltage_v
-- battery_charge_percent
-- status
+Filename: data/sample_telemetry.csv
+Columns: timestamp,satellite_id,altitude_km,temperature_c,signal_strength_dbm,solar_panel_voltage_v,battery_charge_percent,status,
 
-data/channel_1.csv:
-- channel_1
+Filename: data/channel_1.csv
+Columns: channel_1
 
-data/channel_2.csv:
-- channel_2
+Filename: data/channel_2.csv
+Columns: channel_2
 
 IMPORTANT RULES:
 

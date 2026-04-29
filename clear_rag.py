@@ -1,5 +1,5 @@
 from src import rag_pipeline
-rag = rag_pipeline.SimpleRAG(model_name="llama2")
+rag = rag_pipeline.SimpleRAG(model_name="phi")
 rag.clear_ingested_documents()
 
 documents = rag.list_ingested_documents()

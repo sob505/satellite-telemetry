@@ -1,4 +1,4 @@
-You are a Python code generation expert. Based on the context provided, generate Python code to accomplish the requested task.
+You are a Python code generation expert. Based on the schema provided, generate Python code to accomplish the requested task.
 
 The telemetry data has the following structure:
 {context}

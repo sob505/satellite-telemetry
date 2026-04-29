@@ -7,8 +7,10 @@ import argparse
 import sys
 from pathlib import Path
 from src.rag_pipeline import SimpleRAG
+
 # from src.telemetry_loader import TelemetryProcessor
 MODEL = "phi"
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -76,19 +78,24 @@ Examples:
         sys.exit(1)
 
 
-def ingest_command(filepath: str, model: str):
-    """Handle data ingestion."""
-    filepath = Path(filepath)
+def ingest_command(folder_path: str, model: str):
+    """Handle data ingestion for all files in a folder."""
+    folder_path = Path(folder_path)
 
-    if not filepath.exists():
-        raise FileNotFoundError(f"File not found: {filepath}")
+    if not folder_path.exists() or not folder_path.is_dir():
+        raise FileNotFoundError(f"Folder not found: {folder_path}")
 
     rag = SimpleRAG(model_name=model)
-    rag.ingest_telemetry_data(str(filepath))
-    output = rag.output
+    for file in folder_path.iterdir():
+        if file.is_file():  # Ensure it's a file
+            try:
+                yield f"Ingesting: {file}\n"
+                rag.ingest_telemetry_data(str(file))
+                yield f"✓ Successfully ingested: {file}\n"
+            except Exception as e:
+                yield f"Error ingesting {file}: {e}\n"
 
-    output += "✓ Data ingestion complete\n"
-    return output
+    yield "✓ Data ingestion complete for all files in the folder\n"
 
 
 def query_command(question: str, model: str):
@@ -143,6 +150,7 @@ def codegen_command(task: str, model: str, save_file: str = None):
             output += f"\n[{i}] Content preview: {str(content)[:20]}..."
 
     return output
+
 
 def interactive_command(model: str):
     """Handle interactive mode."""
