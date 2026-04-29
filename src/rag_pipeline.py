@@ -129,7 +129,7 @@ class SimpleRAG:
     def _query_ollama(self, question: str, context: str) -> str:
         """Query Ollama for a natural language answer based on context."""
         # Load the prompt from text file
-        with open('coding_prompt.txt','r') as file:
+        with open('query_prompt.txt','r') as file:
             prompt_template = file.read()
 
         prompt = prompt_template.format(context=context, question=question)
