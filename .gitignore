@@ -1,8 +1,0 @@
-data/chroma_db/*
-
-output.py
-
-src/__pycache__/*
-*.pyc
-src/__pycache__/__init__.cpython-313.pyc
-src/__pycache__/rag_pipeline.cpython-313.pyc
