@@ -52,21 +52,23 @@ def create_gui():
     ensure_model_async()
 
     # Callback function to handle input and call other functions
-    # Callback function to handle input and call other functions
     def handle_input(action):
         ensure_model_async()
         user_query = dialogue_input.get()
-        dialogue_text.insert(tk.END, "Processing...")  # Show a loading message
+        dialogue_text.insert(tk.END, "Processing...\n")  # Show a loading message
         thread = threading.Thread(target=process_query, args=(user_query,action), daemon=True)
         thread.start()
 
     def process_query(user_query, action):
         try:
             if action == "Code":
-                output = cli.codegen_command(user_query, MODEL)
+                explanation, code, sources = cli.codegen_command(user_query, MODEL)
+                update_output(explanation, dialogue_text)  # Insert explanation into dialogue_text
+                update_output(code, code_output_text)  # Insert code into code_output_text
+
             elif action == "Query":
                 output = cli.query_command(user_query, MODEL)
-            update_output(output, dialogue_text)
+                update_output(output, dialogue_text)
         except Exception as e:
             update_output(f"Error: {e}\n", dialogue_text)
         play_sound_async('chime.mp3')
@@ -99,8 +101,27 @@ def create_gui():
     def clear_entry(event):
         event.widget.delete(0, tk.END)
 
-    # Column 1: Dialogue Box
-    dialogue_frame = ttk.LabelFrame(root, text="Dialogue Box", padding=10)
+    # Column 1: Inputs
+    rag_frame = ttk.LabelFrame(root, text="Inputs", padding=10)
+    rag_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+    # Add a Text widget inside the LabelFrame for redirected output
+    rag_text = tk.Text(rag_frame, wrap=tk.WORD, state=tk.NORMAL, height=10, width=50)
+    rag_text.pack(fill="both", expand=True)
+
+    # Add a Label above the rag_input
+    rag_label = tk.Label(rag_frame, text="Enter folder path to ingest (e.g. data):")
+    rag_label.pack(fill="x", pady=(0, 5))
+    # Input box for user to enter folder path for ingestion
+    rag_input = tk.Entry(rag_frame)
+    rag_input.pack(fill="x", pady=(10, 0))
+    rag_input.insert(0, "Enter command here")
+    rag_input.bind("<FocusIn>", clear_entry)
+    # Add a button to submit folder path
+    submit_ingest = tk.Button(rag_frame, text="Submit", command=ingest_data)
+    submit_ingest.pack(pady=(10, 0))
+
+    # Column 2: Dialogue Box
+    dialogue_frame = ttk.LabelFrame(root, text="LLM Dialogue", padding=10)
     dialogue_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
 
     dialogue_text = tk.Text(dialogue_frame, wrap=tk.WORD, state=tk.NORMAL, height=10, width=50)
@@ -122,33 +143,12 @@ def create_gui():
     query_button = tk.Button(button_frame, text="Ask Question", command=lambda: handle_input("Query"))
     query_button.pack(side=tk.LEFT, padx=(5, 0))
 
-    # Column 2: Outputs
-    rag_frame = ttk.LabelFrame(root, text="Outputs", padding=10)
-    rag_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
-    # Add a Text widget inside the LabelFrame for redirected output
-    rag_text = tk.Text(rag_frame, wrap=tk.WORD, state=tk.NORMAL, height=10, width=50)
-    rag_text.pack(fill="both", expand=True)
-
-    # Add a Label above the rag_input
-    rag_label = tk.Label(rag_frame, text="Enter folder path to ingest (e.g. data):")
-    rag_label.pack(fill="x", pady=(0, 5))
-    # Input box for user to enter folder path for ingestion
-    rag_input = tk.Entry(rag_frame)
-    rag_input.pack(fill="x", pady=(10, 0))
-    rag_input.insert(0, "Enter command here")
-    rag_input.bind("<FocusIn>", clear_entry)
-    # Add a button to submit folder path
-    submit_ingest = tk.Button(rag_frame, text="Submit", command=ingest_data)
-    submit_ingest.pack(pady=(10, 0))
-
     # Column 3: Analysis of Outputs
-    container_frame = ttk.LabelFrame(root, text="Analysis of Outputs", padding=10)
+    container_frame = ttk.LabelFrame(root, text="Outputs", padding=10)
     container_frame.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
-
-    container_label = tk.Label(container_frame,
-                               text="Extra information about the LLM output is shown here (e.g. confidence level)",
-                               justify="left")
-    container_label.pack(fill="both", expand=True)
+    # Add a Text widget for code output in the container_frame
+    code_output_text = tk.Text(container_frame, wrap=tk.WORD, state=tk.NORMAL, height=10, width=50)
+    code_output_text.pack(fill="both", expand=True)
 
     # Configure column weights for resizing
     root.columnconfigure(0, weight=2)

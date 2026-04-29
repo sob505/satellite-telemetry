@@ -127,7 +127,8 @@ def codegen_command(task: str, model: str, save_file: str = None):
     rag = SimpleRAG(model_name=model)
 
     result = rag.query(task, code_generation=True)
-
+    explanation = result['result']
+    code = result['code']
     output = "=" * 80 + "\n" + "EXPLANATION:" + "\n" + "=" * 80 + "\n" + result['result'] + "\n"
 
     if result.get('code'):
@@ -143,13 +144,15 @@ def codegen_command(task: str, model: str, save_file: str = None):
     else:
         output += "\nNo code was generated. The LLM may not have recognized the code format."
 
+    sources = None
     if result.get('source_documents'):
         output += "\n" + "=" * 80 + "\n" + "SOURCE DOCUMENTS:" + "\n" + "=" * 80 + "\n"
+        sources = result['source_documents']
         for i, doc in enumerate(result['source_documents'], 1):
             content = doc.get('content', doc)
             output += f"\n[{i}] Content preview: {str(content)[:20]}..."
 
-    return output
+    return explanation, code, sources
 
 
 def interactive_command(model: str):
