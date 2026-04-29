@@ -82,7 +82,7 @@ def create_gui():
                 try:
                     compile(code, "<string>", "exec")
                     # Syntax check passed, update the GUI
-                    update_output(explanation, dialogue_text)
+                    update_output("Explanation: \n" + explanation, dialogue_text)
                     update_output(code, code_output_text)
                     update_output("Syntax check passed!\n", dialogue_text)
 
@@ -94,10 +94,10 @@ def create_gui():
                     if fixed:
                         update_output(msg + "\n", code_output_text)
                     else:
-                        update_output("No file name issues found in code.\n", code_output_text)
+                        update_output("No file name issues found in code.\n", dialogue_text)
                 except SyntaxError as e:
                     # Syntax check failed, show error in the GUI
-                    update_output("Syntax check failed:\n" + e, dialogue_text)
+                    update_output("Syntax check failed:\n", dialogue_text)
             elif action == "Query":
                 output = cli.query_command(user_query, MODEL)
                 update_output(output, dialogue_text)
