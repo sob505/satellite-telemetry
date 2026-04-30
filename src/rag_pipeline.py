@@ -206,13 +206,17 @@ class SimpleRAG:
         explanation = ""
         code = ""
 
-        # Try to extract explanation
-        if "EXPLANATION:" in response:
-            exp_start = response.find("EXPLANATION:") + len("EXPLANATION:")
-            exp_end = response.find("CODE:") if "CODE:" in response else len(response)
-            explanation = response[exp_start:exp_end].strip()
+        # Extract explanation (everything before "CODE:")
+        if "CODE:" in response:
+            code_start = response.find("CODE:")
+            explanation = response[:code_start].strip()
+        elif "```python" in response:
+            code_start = response.find("```python")
+            explanation = response[:code_start].strip()
+        else:
+            explanation = response.strip()
 
-        # Try to extract code from markdown code block
+        # Extract code from markdown code block or "CODE:"
         if "```python" in response:
             code_start = response.find("```python") + len("```python")
             code_end = response.find("```", code_start)
@@ -221,23 +225,9 @@ class SimpleRAG:
             else:
                 code = response[code_start:].strip()
         elif "CODE:" in response:
-            code_start = response.find("CODE:") + len("CODE:")
-            code = code_start.strip()
+            code = response[code_start + len("CODE:"):].strip()
 
         return explanation, code
-
-    def batch_query(self, questions: List[str], code_generation: bool = False) -> List[dict]:
-        """Process multiple queries."""
-        results = []
-        for question in questions:
-            result = self.query(question, code_generation=code_generation)
-            results.append({
-                "question": question,
-                "answer": result["result"],
-                "code": result.get("code"),
-                "sources": result["source_documents"]
-            })
-        return results
 
     def list_ingested_documents(self) -> List[str]:
         """
