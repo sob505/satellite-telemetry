@@ -10,7 +10,7 @@ from src.rag_pipeline import SimpleRAG
 import subprocess
 
 # from src.telemetry_loader import TelemetryProcessor
-MODEL = "satellite-telemetry2"
+MODEL = "satellite-telemetry"
 
 
 def main():

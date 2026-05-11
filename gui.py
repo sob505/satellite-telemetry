@@ -7,7 +7,7 @@ from playsound import playsound
 from src import verify
 import os
 
-MODEL = "satellite-telemetry2"  # Default model for all operations
+MODEL = "satellite-telemetry"  # Default model for all operations
 
 
 def ensure_model_async():
