@@ -65,6 +65,24 @@ This installs all dependencies with pre-built wheels - no compilation, works on 
 
    (This downloads ~4GB, takes 5-10 minutes. You only do this once.)
 
+
+## Step 4: Run the GUI
+Make sure you have Ollama running (`ollama serve`) and the model pulled (`ollama pull phi`), then start the GUI:
+
+```bash
+python gui.py
+```
+
+Type in a folder to ingest the data. Example: data/parquet
+
+Once ingested, click on the "LLM Interaction" tab at the top. Use the left text entry to input queries. Press "Generate Code"
+to prompt the LLM to generate Python code. Press "Ask Question" to prompt the LLM to answer your question directly. Press
+"Retry" if you would like to reuse your previous query and have the LLM re-generate the code or answer.
+
+The conversational history will be logged in the left section, and the generated code that passes a synatx check will be
+logged in the right section.
+
+
 ## Project Structure
 
 ```
@@ -92,22 +110,6 @@ satellite-telemetry-rag/
 │   └── verify.py               # Utility to verify RAG results
 └── README.md                   # Full documentation
 ```
-
-## Step 4: Run the GUI
-Make sure you have Ollama running (`ollama serve`) and the model pulled (`ollama pull phi`), then start the GUI:
-
-```bash
-python gui.py
-```
-
-Type in a folder to ingest the data. Example: data/parquet
-
-Once ingested, click on the "LLM Interaction" tab at the top. Use the left text entry to input queries. Press "Generate Code"
-to prompt the LLM to generate Python code. Press "Ask Question" to prompt the LLM to answer your question directly. Press
-"Retry" if you would like to reuse your previous query and have the LLM re-generate the code or answer.
-
-The conversational history will be logged in the left section, and the generated code that passes a synatx check will be 
-logged in the right section.
 
 ## Troubleshooting
 

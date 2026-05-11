@@ -16,6 +16,7 @@ from typing import Callable, Optional
 import threading
 import re
 import traceback
+import textwrap
 
 load_dotenv()
 
@@ -137,20 +138,17 @@ class SimpleRAG:
         # =========================
         # STORE IN CHROMA
         # =========================
-
+        documents = []
         try:
-
             self.collection.add(
                 ids=[
                     f"{source_name}_chunk_{i}"
                     for i in range(len(results))
                 ],
-
                 documents=[
                     res["chunk"]
                     for res in results
                 ],
-
                 embeddings=[
                     res["embedding"]
                     for res in results
@@ -218,13 +216,22 @@ class SimpleRAG:
             log(f"Vector search error: {e}")
             return {"result": str(e), "source_documents": [], "code": None}
 
+        # Guard clause for empty results
         if (
                 not results
                 or not results.get("documents")
+                or not results["documents"]
                 or not results["documents"][0]
         ):
-            documents = results["documents"][0]
-            metadatas = results["metadatas"][0]
+            log("No relevant documents found.")
+            return {
+                "result": "No relevant context found.",
+                "source_documents": [],
+                "code": None
+            }
+
+        documents = results["documents"][0]
+        metadatas = results["metadatas"][0] if results.get("metadatas") else []
 
         # =========================
         # BUILD CONTEXT
@@ -283,7 +290,7 @@ class SimpleRAG:
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "stream": False
+                    "stream": False,
                 },
                 timeout=300
             )
@@ -328,7 +335,7 @@ class SimpleRAG:
                         "prompt": prompt,
                         "stream": False,
                         "options": {
-                            "temperature": 0.2
+                           # "temperature": 0.7,
                         }
                     },
                     timeout=300
@@ -338,6 +345,12 @@ class SimpleRAG:
                     continue
 
                 raw = response.json().get("response", "")
+
+                print("\n=== RAW MODEL RESPONSE ===")
+                print(raw)
+                print("==========================\n")
+
+                log(f"RAW RESPONSE:\n{raw}")
 
                 explanation, code = self._parse_code_response(raw)
 
@@ -355,6 +368,7 @@ class SimpleRAG:
                     error_msg = traceback.format_exc()
                     log("Syntax error detected:")
                     log(error_msg)
+                    log(f"RAW RESPONSE:\n{raw}")
                     log("Retrying with error feedback...")
 
                     prompt = f"""
@@ -368,7 +382,7 @@ BROKEN CODE:
 
 Rewrite the code so it is syntactically correct.
 
-You MUST follow this format exactly:
+You MUST follow this format EXACTLY:
 
 EXPLANATION:
 <brief explanation>
@@ -378,12 +392,16 @@ CODE:
 <valid python code only>
 
 RULES:
+You MUST return ONLY valid Python code.
 
-Return valid Python only
-Keep code short
-No comments
-No markdown outside CODE block
-Ensure code compiles successfully
+STRICT RULES:
+- No placeholders (e.g. s=, x=, TODO)
+- Do NOT use (pd.core.frame.Frame) or any other internal pandas references  
+- Every function call must be syntactically valid
+- No missing arguments
+- No incomplete expressions
+- Do not use unknown helper functions unless defined
+- Do not have indentation errors
 """
             except Exception as e:
                 log(f"LLM error: {e}")
@@ -391,38 +409,54 @@ Ensure code compiles successfully
         return "Failed to generate valid code", None
 
     def _parse_code_response(self, response: str) -> tuple:
-        """
-        Parse STRICT format:
-        EXPLANATION:
-        ...
-        CODE:
-        ...
-        """
-
         explanation = ""
         code = ""
 
         # =========================
-        # Extract EXPLANATION
-        if "EXPLANATION:" in response and "CODE:" in response:
+        # Structured format
+        if "CODE:" in response:
+            parts = response.split("CODE:", 1)
             explanation = (
-                response.split("EXPLANATION:")[1]
-                .split("CODE:")[0]
+                parts[0]
+                .replace("EXPLANATION:", "")
                 .strip()
             )
+            code = parts[1].strip()
 
-            code = response.split("CODE:")[1].strip()
-
-        # =========================
-        # Fallback: no structure
         else:
-            explanation = response.strip()
+            # =========================
+            # Markdown code extraction
+            match = re.search(
+                r"```python\s*(.*?)```",
+                response,
+                re.DOTALL
+            )
+
+            if match:
+                code = match.group(1).strip()
+
+            # =========================
+            # Raw python fallback
+            elif any(
+                    kw in response
+                    for kw in [
+                        "import ",
+                        "def ",
+                        "print(",
+                        "="
+                    ]
+            ):
+                code = response.strip()
+
+            else:
+                explanation = response.strip()
 
         # =========================
-        # Cleanup safety
-        code = code.replace("```python", "")
-        code = code.replace("```", "")
-        code = code.replace("\u00a0", " ").strip()
+        # Cleanup
+        #code = code.replace("```python", "")
+        #code = code.replace("```", "")
+
+        #code = textwrap.dedent(code).strip()
 
         return explanation, code
 

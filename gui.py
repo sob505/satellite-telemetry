@@ -4,10 +4,10 @@ from src import cli
 import threading
 import subprocess
 from playsound import playsound
-from verify import repair_generated_code
+from src import verify
 import os
 
-MODEL = "satellite-telemetry"  # Default model for all operations
+MODEL = "satellite-telemetry2"  # Default model for all operations
 
 
 def ensure_model_async():
@@ -94,7 +94,7 @@ def create_gui():
                                     sources_text = "Sources cited:\n" + "\n".join([f"  - {s.get('source', 'Unknown')}" for s in sources])
                                     update_output(sources_text + "\n", dialogue_text)
 
-                                fixed, msg = repair_generated_code(
+                                fixed, msg = verify.repair_generated_code(
                                     file_path=temp_file,
                                     repo_path=os.getcwd(),
                                     replace_with="placeholder.csv"
