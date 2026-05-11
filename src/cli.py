@@ -10,7 +10,7 @@ from src.rag_pipeline import SimpleRAG
 import subprocess
 
 # from src.telemetry_loader import TelemetryProcessor
-MODEL = "phi"
+MODEL = "satellite-telemetry"
 
 
 def main():
@@ -86,26 +86,34 @@ def ingest_command(folder_path: str, model: str):
         raise FileNotFoundError(f"Folder not found: {folder_path}")
 
     rag = SimpleRAG(model_name=model)
+    ingested_files = []
+
     for file in folder_path.iterdir():
-        if file.is_file():  # Ensure it's a file
+        if file.is_file() and file.suffix in ['.csv', '.json', '.txt', '.parquet', '.md']:
             try:
-                yield f"Ingesting: {file}\n"
-                rag.ingest_telemetry_data(str(file))
-                yield f"✓ Successfully ingested: {file}\n"
+                source_name = file.name  # Use just filename as source
+                yield f"Ingesting: {source_name}\n"
+                rag.ingest_telemetry_data_async(str(file), source_name=source_name)
+                yield f"✓ Successfully ingested: {source_name}\n"
+                ingested_files.append(source_name)
             except Exception as e:
-                yield f"Error ingesting {file}: {e}\n"
+                yield f"Error ingesting {file.name}: {e}\n"
 
-    yield "✓ Data ingestion complete for all files in the folder\n"
+    if ingested_files:
+        yield f"\n✓ Ingested sources:\n"
+        for fname in ingested_files:
+            yield f"  - {fname}\n"
 
 
-def query_command(question: str, model: str):
-    """Handle single query."""
+def query_command(question: str, model: str, progress_callback=None):
+    """Handle single query and return structured result."""
     print(f"Initializing RAG pipeline with model: {model}")
     rag = SimpleRAG(model_name=model)
 
     print(f"Processing query: {question}")
-    result = rag.query(question)
+    result = rag.query(question, code_generation=False, progress_callback=progress_callback)
 
+    # Console output
     print("\n" + "=" * 80)
     print("ANSWER:")
     print("=" * 80)
@@ -113,47 +121,53 @@ def query_command(question: str, model: str):
 
     if result.get('source_documents'):
         print("\n" + "=" * 80)
-        print("SOURCE DOCUMENTS:")
+        print("SOURCES:")
         print("=" * 80)
-        for i, doc in enumerate(result['source_documents'], 1):
-            content = doc.get('content', doc)
-            print(f"\n[{i}] Content preview: {str(content)[:200]}...")
+        for doc in result['source_documents']:
+            source = doc.get('source', 'Unknown')
+            print(f"  - {source}")
 
-    return result['result']
+    # Return the full structured result for the GUI
+    return result
 
 
-def codegen_command(task: str, model: str, save_file: str = None):
-    """Handle code generation."""
+def codegen_command(task: str, model: str, save_file: str = None, progress_callback=None):
+    """Handle code generation and return structured result."""
     rag = SimpleRAG(model_name=model)
+    print("RAG Model done\n")
+    result = rag.query(task, code_generation=True, progress_callback=progress_callback)
+    print("Got results\n")
+    if result is None:
+        print("No response received from the model. Please check your query and try again.")
 
-    result = rag.query(task, code_generation=True)
-    explanation = result['result']
-    code = result['code']
-    output = "=" * 80 + "\n" + "EXPLANATION:" + "\n" + "=" * 80 + "\n" + result['result'] + "\n"
+    # Console output
+    output = "=" * 80 + "\nEXPLANATION:\n" + "=" * 80 + "\n"
+    output += result['result'] + "\n"
 
     if result.get('code'):
-        output += "\n" + "=" * 80 + "GENERATED CODE:" + "\n" + "=" * 80 + "\n" + result['code'] + "\n"
+        output += "\n" + "=" * 80 + "\nGENERATED CODE:\n" + "=" * 80 + "\n"
+        output += result['code'] + "\n"
 
         # Default to saving the code if no file is specified
         if not save_file:
-            save_file = "output.py"
+            save_file = "../output.py"
 
         with open(save_file, 'w') as f:
             f.write(result['code'])
         output += f"\n✓ Code saved to: {save_file}"
     else:
-        output += "\nNo code was generated. The LLM may not have recognized the code format."
+        output += "\nNo code was generated."
 
-    sources = None
     if result.get('source_documents'):
-        output += "\n" + "=" * 80 + "\n" + "SOURCE DOCUMENTS:" + "\n" + "=" * 80 + "\n"
-        sources = result['source_documents']
-        for i, doc in enumerate(result['source_documents'], 1):
-            content = doc.get('content', doc)
-            output += f"\n[{i}] Content preview: {str(content)[:20]}..."
+        output += "\n" + "=" * 80 + "\nSOURCES:\n" + "=" * 80 + "\n"
+        for doc in result['source_documents']:
+            source = doc.get('source', 'Unknown')
+            output += f"  - {source}\n"
 
-    return explanation, code, sources
+    print(output)
 
+    # Return full structured result for the GUI
+    return result
 
 def check_command(file_path: str, model: str):
     """Check Python syntax using ollama."""

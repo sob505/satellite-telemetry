@@ -1,18 +1,33 @@
 """
-Satellite Telemetry RAG Pipeline (No LangChain, No NumPy)
-Enhanced with Code Generation Support
+Satellite Telemetry RAG Pipeline
 """
 
 import os
-import json
-import re
 from typing import List, Dict
 from dotenv import load_dotenv
 import chromadb
 from sentence_transformers import SentenceTransformer
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import math
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import pandas as pd
+from typing import Callable, Optional
+import threading
+import re
+import traceback
 
 load_dotenv()
+
+
+def process_chunk(chunk, embeddings):
+    """Generate embedding for a single chunk."""
+    try:
+        embedding = embeddings.encode(chunk)
+        return {"chunk": chunk, "embedding": embedding.tolist()}
+    except Exception as e:
+        return {"error": f"Error processing chunk: {e}"}
+
 
 class SimpleRAG:
     def __init__(self, model_name: str = "phi"):
@@ -26,11 +41,14 @@ class SimpleRAG:
         self.ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
         # Initialize embeddings
-        self.embeddings = SentenceTransformer("all-MiniLM-L6-v2")
+        self.embeddings = SentenceTransformer("sentence-transformers/paraphrase-MiniLM-L3-v2")
 
         # Vector store path
         self.persist_directory = "data/chroma_db"
         os.makedirs(self.persist_directory, exist_ok=True)
+
+        # Thread pool for background ingestion
+        self.thread_pool = ThreadPoolExecutor(max_workers=2)
 
         # Initialize Chroma client
         self.client = chromadb.PersistentClient(path=self.persist_directory)
@@ -38,87 +56,214 @@ class SimpleRAG:
 
         self.output = f"Initialized RAG pipeline with model: {model_name}\n"
 
-    def ingest_telemetry_data(self, file_path: str):
-        """Ingest satellite telemetry data from a file."""
+    def ingest_telemetry_data(self, file_path: str, source_name: str = None):
+        """
+        Ingest telemetry data from parquet, markdown, csv, txt, or json.
+        """
+        if source_name is None:
+            source_name = os.path.basename(file_path)
+
         self.output += f"Ingesting telemetry data from: {file_path}\n"
-        with open(file_path, 'r') as f:
-            content = f.read()
 
-        # Simple chunking by lines
-        lines = content.split('\n')
+        ext = os.path.splitext(file_path)[1].lower()
+
         chunks = []
-        chunk_size = 10
+        chunk_indices = []
 
-        for i in range(0, len(lines), chunk_size):
-            chunk = '\n'.join(lines[i:i+chunk_size])
-            if chunk.strip():
-                chunks.append(chunk)
-
-        # Embed and store chunks
-        for i, chunk in enumerate(chunks):
-            try:
-                embedding = self.embeddings.encode(chunk)
-                self.collection.add(
-                    ids=[f"chunk_{i}"],
-                    documents=[chunk],
-                    embeddings=[embedding.tolist()]
-                )
-            except Exception as e:
-                self.output += f"Error processing chunk {i}: {e}\n"
-
-        self.output += f"✓ Ingested {len(chunks)} chunks from {file_path}\n"
-
-    def query(self, question: str, top_k: int = 4, code_generation: bool = False) -> Dict:
-        """
-        Query the RAG pipeline.
-
-        Args:
-            question: The query question
-            top_k: Number of top results to retrieve
-            code_generation: If True, request code as output instead of natural language
-
-        Returns:
-            Dictionary with 'result' and 'source_documents'
-        """
-        self.output += f"Generating code for task: {question}\n"
-        # Embed the question
-        question_embedding = self.embeddings.encode(question)
-
-        # Search in vector store
         try:
+
+            # =========================
+            # PARQUET
+            # =========================
+            if ext == ".parquet":
+                df = pd.read_parquet(file_path)
+
+                # Dynamic chunk sizing
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                rows_per_chunk = max(500, int(file_size_mb * 2))
+
+                for i in range(0, len(df), rows_per_chunk):
+                    chunk_df = df.iloc[i:i + rows_per_chunk]
+                    chunk_text = chunk_df.to_string()[:512]  # Limit to 512 chars
+
+                    if chunk_text.strip():
+                        chunks.append(chunk_text)
+                        chunk_indices.append(i // rows_per_chunk)
+
+            # =========================
+            # TEXT FILES
+            # =========================
+            else:
+
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                lines = content.splitlines()
+
+                chunk_size = max(10, math.ceil(len(lines) / 100))
+
+                for i in range(0, len(lines), chunk_size):
+
+                    chunk_text = "\n".join(
+                        lines[i:i + chunk_size]
+                    ).strip()
+
+                    if chunk_text:
+                        chunks.append(chunk_text)
+                        chunk_indices.append(i // chunk_size)
+
+        except Exception as e:
+            self.output += f"Error loading file: {e}\n"
+            return
+
+        # =========================
+        # EMBEDDINGS
+        # =========================
+
+        results = []
+
+        embeddings = self.embeddings.encode(
+            chunks,
+            batch_size=32,
+            show_progress_bar=False,
+            normalize_embeddings=True
+        )
+
+        results = [
+            {"chunk": chunk, "embedding": emb.tolist()}
+            for chunk, emb in zip(chunks, embeddings)
+        ]
+
+        # =========================
+        # STORE IN CHROMA
+        # =========================
+
+        try:
+
+            self.collection.add(
+                ids=[
+                    f"{source_name}_chunk_{i}"
+                    for i in range(len(results))
+                ],
+
+                documents=[
+                    res["chunk"]
+                    for res in results
+                ],
+
+                embeddings=[
+                    res["embedding"]
+                    for res in results
+                ],
+
+                metadatas=[
+                    {
+                        "source": source_name,
+                        "chunk_index": chunk_indices[i],
+                        "file_path": str(file_path),
+                        "format": ext.replace(".", "")
+                    }
+                    for i in range(len(results))
+                ]
+            )
+
+            self.output += f"✓ Ingested {len(results)} chunks from {source_name}\n"
+
+        except Exception as e:
+
+            self.output += f"Error during batch write: {e}\n"
+
+    def ingest_telemetry_data_async(
+            self,
+            file_path: str,
+            source_name: str = None,
+            progress_callback: Optional[Callable[[str], None]] = None
+    ):
+        """Ingest telemetry data asynchronously (non-blocking)."""
+        def _worker():
+            self.ingest_telemetry_data(file_path, source_name)
+            if progress_callback:
+                progress_callback("✓ Ingestion complete")
+
+        self.thread_pool.submit(_worker)
+
+    def query(
+            self,
+            question: str,
+            top_k: int = 4,
+            code_generation: bool = False,
+            progress_callback: Optional[Callable[[str], None]] = None
+    ) -> Dict:
+
+        def log(msg: str):
+            self.output += msg + "\n"
+            if progress_callback:
+                progress_callback(msg)
+
+        log(f"Querying: {question}")
+
+        # =========================
+        # VECTOR SEARCH
+        # =========================
+        try:
+            question_embedding = self.embeddings.encode(question)
+
             results = self.collection.query(
                 query_embeddings=[question_embedding.tolist()],
-                n_results=top_k
+                n_results=top_k,
+                include=["documents", "metadatas", "distances"]
             )
-        except Exception as e:
-            return {
-                "result": f"Error querying vector store: {e}",
-                "source_documents": [],
-                "code": None
-            }
 
-        # Build context from retrieved documents
+        except Exception as e:
+            log(f"Vector search error: {e}")
+            return {"result": str(e), "source_documents": [], "code": None}
+
+        if (
+                not results
+                or not results.get("documents")
+                or not results["documents"][0]
+        ):
+            documents = results["documents"][0]
+            metadatas = results["metadatas"][0]
+
+        # =========================
+        # BUILD CONTEXT
+        # =========================
         context = ""
         source_docs = []
 
-        if results and results['documents'] and len(results['documents']) > 0:
-            for doc in results['documents'][0]:
-                context += doc + "\n"
-                source_docs.append({"content": doc})
+        for i, doc in enumerate(documents):
+            metadata = metadatas[i] if i < len(metadatas) else {} or {}
 
-        if not context:
-            return {
-                "result": "No relevant telemetry data found. Please ingest data first with: python cli.py ingest data/sample_telemetry.csv",
-                "source_documents": [],
-                "code": None
-            }
+            source_file = metadata.get("source", "Unknown")
+            chunk_index = metadata.get("chunk_index", "N/A")
 
-        # Query Ollama for answer
+            context += f"[Source: {source_file}]\n{doc}\n\n"
+
+            source_docs.append({
+                "content": doc,
+                "source": source_file,
+                "chunk_index": chunk_index
+            })
+
+        log(f"Retrieved {len(source_docs)} chunks.")
+
+        # =========================
+        # ROUTING
+        # =========================
         if code_generation:
-            answer, code = self._query_ollama_for_code(question, context)
+            log("Routing → CODE generation")
+            answer, code = self._query_ollama_for_code(
+                question,
+                context,
+                progress_callback=progress_callback
+            )
         else:
+            log("Routing → TEXT QA")
             answer = self._query_ollama(question, context)
             code = None
+
+        log("Query complete.")
 
         return {
             "result": answer,
@@ -127,10 +272,9 @@ class SimpleRAG:
         }
 
     def _query_ollama(self, question: str, context: str) -> str:
-        """Query Ollama for a natural language answer based on context."""
-        # Load the prompt from text file
-        with open('query_prompt.txt','r') as file:
-            prompt_template = file.read()
+        """Simple QA model call (no retry logic, no parsing)."""
+        with open("prompts/query_prompt.txt", "r") as f:
+            prompt_template = f.read()
 
         prompt = prompt_template.format(context=context, question=question)
         try:
@@ -139,93 +283,146 @@ class SimpleRAG:
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "stream": False,
+                    "stream": False
                 },
                 timeout=300
             )
 
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("response", "No response from model")
-            else:
-                return f"Error from Ollama: {response.status_code}"
-        except requests.ConnectionError:
-            return f"Cannot connect to Ollama at {self.ollama_url}. Is it running? (ollama serve)"
+            if response.status_code != 200:
+                return f"Error: {response.status_code}"
+            return response.json().get("response", "No response")
         except Exception as e:
-            return f"Error querying Ollama: {e}"
+            return f"Error querying model: {e}"
 
-    def _query_ollama_for_code(self, question: str, context: str) -> tuple:
-        """
-        Query Ollama for code generation based on context.
+    def _query_ollama_for_code(
+            self,
+            question: str,
+            context: str,
+            progress_callback: Optional[Callable[[str], None]] = None
+    ) -> tuple:
 
-        Returns:
-            Tuple of (explanation, code_string)
-        """
+        def log(msg: str):
+            self.output += msg + "\n"
+            if progress_callback:
+                progress_callback(msg)
 
-        # Load the prompt from text file
-        with open('coding_prompt.txt','r') as file:
-            prompt_template = file.read()
-        # Format prompt with context and question
-        prompt = prompt_template.format(context=context, question=question)
+        MAX_RETRIES = 2
 
         try:
-            response = requests.post(
-                f"{self.ollama_url}/api/generate",
-                json={
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "stream": False,
-                },
-                timeout=300
-            )
+            with open("prompts/coding_prompt.txt", "r") as f:
+                base_prompt = f.read()
+        except FileNotFoundError:
+            return "Missing coding prompt", None
 
-            if response.status_code == 200:
-                data = response.json()
-                full_response = data.get("response", "No response from model")
+        prompt = base_prompt.format(context=context, question=question)
 
-                # Parse the response to extract explanation and code
-                explanation, code = self._parse_code_response(full_response)
-                return explanation, code
-            else:
-                return f"Error from Ollama: {response.status_code}", None
-        except requests.ConnectionError:
-            return f"Cannot connect to Ollama at {self.ollama_url}. Is it running? (ollama serve)", None
-        except Exception as e:
-            return f"Error querying Ollama: {e}", None
+        for attempt in range(MAX_RETRIES + 1):
+
+            log(f"Generating code (attempt {attempt + 1})")
+
+            try:
+                response = requests.post(
+                    f"{self.ollama_url}/api/generate",
+                    json={
+                        "model": self.model_name,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {
+                            "temperature": 0.2
+                        }
+                    },
+                    timeout=300
+                )
+
+                if response.status_code != 200:
+                    continue
+
+                raw = response.json().get("response", "")
+
+                explanation, code = self._parse_code_response(raw)
+
+                if not code:
+                    log("No code extracted, retrying...")
+                    continue
+
+                # Syntax check
+                try:
+                    compile(code, "<string>", "exec")
+                    log("Code validation passed.")
+                    return explanation, code
+
+                except Exception:
+                    error_msg = traceback.format_exc()
+                    log("Syntax error detected:")
+                    log(error_msg)
+                    log("Retrying with error feedback...")
+
+                    prompt = f"""
+You previously generated invalid Python code.
+
+ERROR:
+{error_msg}
+
+BROKEN CODE:
+{code}
+
+Rewrite the code so it is syntactically correct.
+
+You MUST follow this format exactly:
+
+EXPLANATION:
+<brief explanation>
+
+CODE:
+```python
+<valid python code only>
+
+RULES:
+
+Return valid Python only
+Keep code short
+No comments
+No markdown outside CODE block
+Ensure code compiles successfully
+"""
+            except Exception as e:
+                log(f"LLM error: {e}")
+
+        return "Failed to generate valid code", None
 
     def _parse_code_response(self, response: str) -> tuple:
         """
-        Parse the code generation response to extract explanation and code.
-
-        Args:
-            response: The full response from the LLM
-
-        Returns:
-            Tuple of (explanation, code_string)
+        Parse STRICT format:
+        EXPLANATION:
+        ...
+        CODE:
+        ...
         """
+
         explanation = ""
         code = ""
 
-        # Extract explanation (everything before "CODE:")
-        if "CODE:" in response:
-            code_start = response.find("CODE:")
-            explanation = response[:code_start].strip()
-        elif "```python" in response:
-            code_start = response.find("```python")
-            explanation = response[:code_start].strip()
+        # =========================
+        # Extract EXPLANATION
+        if "EXPLANATION:" in response and "CODE:" in response:
+            explanation = (
+                response.split("EXPLANATION:")[1]
+                .split("CODE:")[0]
+                .strip()
+            )
+
+            code = response.split("CODE:")[1].strip()
+
+        # =========================
+        # Fallback: no structure
         else:
             explanation = response.strip()
 
-        # Extract code from markdown code block or "CODE:"
-        if "```python" in response:
-            code_start = response.find("```python") + len("```python")
-            code_end = response.find("```", code_start)
-            if code_end != -1:
-                code = response[code_start:code_end].strip()
-            else:
-                code = response[code_start:].strip()
-        elif "CODE:" in response:
-            code = response[code_start + len("CODE:"):].strip()
+        # =========================
+        # Cleanup safety
+        code = code.replace("```python", "")
+        code = code.replace("```", "")
+        code = code.replace("\u00a0", " ").strip()
 
         return explanation, code
 
@@ -259,3 +456,20 @@ class SimpleRAG:
                 self.output += "No documents to clear.\n"
         except Exception as e:
             self.output += f"Error clearing documents: {e}\n"
+
+    def list_sources(self) -> List[str]:
+        """List all source files currently ingested."""
+        try:
+            results = self.collection.get(include=["metadatas"])
+            sources = set()
+            for metadata_list in results.get('metadatas', []):
+                if isinstance(metadata_list, dict):
+                    sources.add(metadata_list.get('source', 'Unknown'))
+            return sorted(list(sources))
+        except Exception as e:
+            self.output += f"Error listing sources: {e}\n"
+            return []
+
+    def shutdown(self):
+        """Shut down thread pool."""
+        self.thread_pool.shutdown(wait=True)

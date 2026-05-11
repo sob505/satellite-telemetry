@@ -65,6 +65,6 @@ def convert_all_pickles(input_dir: str, output_dir: str) -> None:
 
 if __name__ == "__main__":
     convert_all_pickles(
-        input_dir="ESA-Mission1/ESA-Mission1/channels",
-        output_dir="data/parquet"
+        input_dir="../ESA-Mission1/ESA-Mission1/channels",
+        output_dir="../data/parquet"
     )

@@ -54,7 +54,7 @@ This installs all dependencies with pre-built wheels - no compilation, works on 
 
 3. **Pull a model** (in yet another terminal, while Ollama is running):
    ```bash
-   ollama pull mistral
+   ollama pull phi
    ```
 
    (This downloads ~4GB, takes 5-10 minutes. You only do this once.)
@@ -107,7 +107,7 @@ satellite-telemetry-rag/
 from src.rag_pipeline import SimpleRAG
 
 # Initialize
-rag = SimpleRAG(model_name="mistral")
+rag = SimpleRAG(model_name="phi")
 
 # Ingest data
 rag.ingest_telemetry_data("data/sample_telemetry.csv")

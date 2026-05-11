@@ -1,13 +1,13 @@
 import tkinter as tk
 from tkinter import ttk
-import cli
+from src import cli
 import threading
 import subprocess
 from playsound import playsound
 from verify import repair_generated_code
 import os
 
-MODEL = "phi"  # Default model for all operations
+MODEL = "satellite-telemetry"  # Default model for all operations
 
 
 def ensure_model_async():
@@ -62,59 +62,90 @@ def create_gui():
         thread = threading.Thread(target=process_query, args=(user_query,action), daemon=True)
         thread.start()
 
-    def feedback_input():
-        ensure_model_async()
-        user_query = r'You did not do it right. Please retry query: ' + prev_query
-        action = prev_action
-        dialogue_text.insert(tk.END, "Processing...\n")  # Show a loading message
-        thread = threading.Thread(target=process_query, args=(user_query,action), daemon=True)
-        thread.start()
-
     def process_query(user_query, action):
-        try:
-            if action == "Code":
-                explanation, code, sources = cli.codegen_command(user_query, MODEL)
-                print(f"Explanation: {explanation}")  # Debugging
-                update_output("Code generated. Running syntax check...\n", dialogue_text)
-                # Save the generated code to a temporary file for syntax checking
-                temp_file = "output.py"
-                with open(temp_file, "w") as f:
-                    f.write(code)
+        def run_query():
+            try:
+                if action == "Code":
+                    print(f"Running code generation for query: {user_query}")
+                    result = cli.codegen_command(user_query, MODEL, progress_callback=ui_log)
+                    if result is not None:
+                        explanation = result.get('result', '')
+                        code = result.get('code', '')
+                        sources = result.get('source_documents', [])
+                        update_output("Code generated. Running syntax check...\n", dialogue_text)
+                        # Save the generated code to a temporary file for syntax checking
+                        temp_file = "output.py"
+                        if code is not None:
+                            with open(temp_file, "w") as f:
+                                f.write(code)
 
-                # Perform syntax check
-                try:
-                    compile(code, "<string>", "exec")
-                    # Syntax check passed, update the GUI
-                    update_output("Explanation: \n" + explanation, dialogue_text)
-                    update_output(code, code_output_text)
-                    update_output("Syntax check passed!\n", dialogue_text)
+                            # Display code in G
+                            update_output("Explanation: \n" + explanation, dialogue_text)
+                            update_output(code, code_output_text, separator=True)
 
-                    fixed, msg = repair_generated_code(
-                        file_path=temp_file,
-                        repo_path=os.getcwd(),
-                        replace_with="placeholder.csv"
-                    )
-                    if fixed:
-                        update_output(msg + "\n", dialogue_text)
-                    else:
-                        update_output("No file name issues found in code.\n", dialogue_text)
-                except SyntaxError as e:
-                    # Syntax check failed, show error in the GUI
-                    update_output("Syntax check failed:\n", dialogue_text)
-            elif action == "Query":
-                output = cli.query_command(user_query, MODEL)
-                update_output(output, dialogue_text)
-        except Exception as e:
-            update_output(f"Error: {e}\n", dialogue_text)
-        play_sound_async('chime.mp3')
+                            # Perform syntax check
+                            try:
+                                compile(code, "<string>", "exec")
+                                # Syntax check passed, update the GUI
+                                update_output("Syntax check passed!\n", dialogue_text)
 
-    def update_output(output, target_widget, align="left"):
+                                # After syntax check passes
+                                if sources:
+                                    sources_text = "Sources cited:\n" + "\n".join([f"  - {s.get('source', 'Unknown')}" for s in sources])
+                                    update_output(sources_text + "\n", dialogue_text)
+
+                                fixed, msg = repair_generated_code(
+                                    file_path=temp_file,
+                                    repo_path=os.getcwd(),
+                                    replace_with="placeholder.csv"
+                                )
+                                if fixed:
+                                    update_output(msg + "\n", dialogue_text)
+                                else:
+                                    update_output("No file name issues found in code.\n", dialogue_text)
+                            except SyntaxError as e:
+                                # Syntax check failed, show error in the GUI
+                                update_output(f"Syntax check failed: {e}\n", dialogue_text)
+                        else:
+                            update_output("No code generated.\n", dialogue_text)
+                elif action == "Query":
+                    result = cli.query_command(user_query, MODEL, progress_callback=ui_log)
+                    output = result.get('result', 'No response')
+                    sources = result.get('source_documents', [])
+
+                    update_output(output + "\n", dialogue_text)
+
+                    if sources:
+                        sources_text = "Sources: " + ", ".join([s.get('source', 'Unknown') for s in sources])
+                        update_output(sources_text + "\n", dialogue_text)
+            except Exception as e:
+                update_output(f"Error: {e}\n", dialogue_text)
+            play_sound_async('chime.mp3')
+
+        def ui_log(msg):
+            root.after(0, lambda: update_output(msg + "\n", dialogue_text))
+
+        def process_generator(generator):
+            try:
+                message = next(generator)
+                update_output(message, dialogue_text)
+                dialogue_text.after(100, lambda: process_generator(generator))  # Schedule next update
+            except StopIteration:
+                play_sound_async('chime.mp3')  # Play sound when done
+            except Exception as e:
+                update_output(f"Error: {e}", dialogue_text)
+
+        threading.Thread(target=run_query, daemon=True).start()
+
+    def update_output(output, target_widget, align="left", separator=False):
         # Configure the tag for boxed messages
+        if separator:
+            target_widget.insert('end', '-' * 80 + '\n')  # Add a separator line
         target_widget.tag_configure("box", lmargin1=10, lmargin2=10, rmargin=10, background="#f0f0f0", relief="solid", borderwidth=1)
         target_widget.tag_configure(align, justify=align)
 
         # Insert the text with the "box" tag
-        if align == "right":
+        if align == "left":
             target_widget.insert(tk.END, output + "\n", ("box", align))
         else:
             target_widget.insert(tk.END, output + "\n", align)
