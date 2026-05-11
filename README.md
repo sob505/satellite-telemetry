@@ -3,6 +3,8 @@ This project implements a Retrieval-Augmented Generation (RAG) system for satell
 It includes a command-line interface and a GUI for interactive querying, as well as scripts for preprocessing data from
 the ESA Anomaly Detection Dataset, Mission 1. 
 
+Disclaimer: The writing of this document, as well as the frameworks of several scripts and comments in the codebase, was assisted by 
+generative AI.
 
 ## Step 0: Verify Python and pip Installation
 
